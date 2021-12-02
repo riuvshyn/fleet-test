@@ -1,0 +1,101 @@
+# The default namespace to be applied to resources. This field is not used to
+# enforce or lock down the deployment to a specific namespace, but instead
+# provide the default value of the namespace field if one is not specified
+# in the manifests.
+# Default: default
+defaultNamespace: argocd
+
+# All resources will be assigned to this namespace and if any cluster scoped
+# resource exists the deployment will fail.
+# Default: ""
+namespace: argocd
+
+helm:
+  # Use a custom location for the Helm chart. This can refer to any go-getter URL.
+  # This allows one to download charts from most any location.  Also know that
+  # go-getter URL supports adding a digest to validate the download. If repo
+  # is set below this field is the name of the chart to lookup
+  chart: https://github.com/argoproj/argo-helm/releases/download/argo-cd-3.26.11/argo-cd-3.26.12.tgz
+  # A https URL to a Helm repo to download the chart from. It's typically easier
+  # to just use `chart` field and refer to a tgz file.  If repo is used the
+  # value of `chart` will be used as the chart name to lookup in the Helm repository.
+  #repo: https://github.com/argoproj/argo-helm/releases/download/argo-cd-3.26.11/argo-cd-3.26.12.tgz
+  # Any values that should be placed in the `values.yaml` and passed to helm during
+  # install.
+  values:
+    apiVersionOverrides:
+      ingress: "extensions/v1beta1"
+    redis-ha:
+      enabled: true
+    controller:
+      enableStatefulSet: true
+    repoServer:
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+    configs:
+      # credentialTemplates:
+      #   https-creds:
+      #     url: https://github.com/transferwise
+      #     username: token
+      #     password: ${argo_gh_token}
+      # secret:
+      #   argocdServerAdminPassword: '${argo_admin_password}'
+      #   extra:
+      #     accounts.appset_progressive_sync.password: '${argo_progressive_sync_controller_password}'
+      #     # list of generated account tokens/api keys
+      #     #accounts.alice.tokens: [{"id":"123","iat":1583789194,"exp":1583789194}]
+      #     accounts.managed_cluster_terraform.password: '${argo_terraform_password}'
+      #     # list of generated account tokens/api keys
+      #     #accounts.alice.tokens: [{"id":"123","iat":1583789194,"exp":1583789194}]
+    server:
+      config:
+        #url: https://argo.${rancher_domain}
+        url: https://argo.rancher.k8stw.com
+        accounts.appset_progressive_sync: apiKey
+        accounts.managed_cluster_terraform: login
+      rbacConfig:
+        policy.default: role:readonly
+        policy.csv: |
+          p, role:appset_progressive_sync, applications, *, */*, allow
+          g, appset_progressive_sync, role:appset_progressive_sync
+          p, role:managed_cluster_terraform, clusters, create, *, allow
+          p, role:managed_cluster_terraform, clusters, update, *, allow
+          p, role:managed_cluster_terraform, clusters, get, *, allow
+          p, role:managed_cluster_terraform, clusters, delete, *, allow
+          g, managed_cluster_terraform, role:managed_cluster_terraform
+      extraArgs:
+        - --insecure
+      autoscaling:
+        enabled: true
+        minReplicas: 2
+      service:
+        type: NodePort
+      ingress:
+        enabled: true
+        annotations:
+          alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+          alb.ingress.kubernetes.io/ssl-redirect: "443"
+          alb.ingress.kubernetes.io/actions.argocd-server: >
+            {"type":"forward","forwardConfig":{"targetGroups":[{"serviceName":"argocd-server","servicePort":"http"}]}}
+          kubernetes.io/ingress.class: alb
+        hosts:
+          #- argo.${rancher_domain}
+          - argo.rancher.k8stw.com
+        extraPaths:
+         - path: /*
+           backend:
+             serviceName: argocd-server
+             servicePort: use-annotation
+
+  # Allow to use values files from configmaps or secrets
+  # valuesFrom:
+  # - configMapKeyRef:
+  #     name: configmap-values
+  #     # default to namespace of bundle
+  #     namespace: default 
+  #     key: values.yaml
+  #   secretKeyRef:
+  #     name: secret-values
+  #     namespace: default
+  #     key: values.yaml
